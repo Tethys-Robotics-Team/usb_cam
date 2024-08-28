@@ -66,23 +66,26 @@ UsbCamNode::UsbCamNode(const rclcpp::NodeOptions & node_options)
   this->declare_parameter("camera_info_url", "");
   this->declare_parameter("framerate", 30.0);
   this->declare_parameter("frame_id", "default_cam");
-  this->declare_parameter("image_height", 480);
-  this->declare_parameter("image_width", 640);
+  this->declare_parameter("image_height", 1920);
+  this->declare_parameter("image_width", 1080);
   this->declare_parameter("io_method", "mmap");
   this->declare_parameter("pixel_format", "yuyv");
   this->declare_parameter("av_device_format", "YUV422P");
   this->declare_parameter("video_device", "/dev/video0");
-  this->declare_parameter("brightness", 50);  // 0-255, -1 "leave alone"
-  this->declare_parameter("contrast", -1);    // 0-255, -1 "leave alone"
-  this->declare_parameter("saturation", -1);  // 0-255, -1 "leave alone"
-  this->declare_parameter("sharpness", -1);   // 0-255, -1 "leave alone"
-  this->declare_parameter("gain", -1);        // 0-100?, -1 "leave alone"
-  this->declare_parameter("auto_white_balance", true);
-  this->declare_parameter("white_balance", 4000);
-  this->declare_parameter("autoexposure", true);
-  this->declare_parameter("exposure", 100);
-  this->declare_parameter("autofocus", false);
-  this->declare_parameter("focus", -1);  // 0-255, -1 "leave alone"
+  this->declare_parameter("brightness", 0);  
+  this->declare_parameter("contrast", 32);    
+  this->declare_parameter("saturation", 64);  
+  this->declare_parameter("hue", 0); 
+  this->declare_parameter("gamma", 100); 
+  this->declare_parameter("gain", 0); 
+  this->declare_parameter("power_line_frequency", 2);
+  this->declare_parameter("white_balance_automatic", true);
+  this->declare_parameter("white_balance_temperature", 4600);
+  this->declare_parameter("sharpness", 3);   
+  this->declare_parameter("backlight_compensation", 5);   
+  this->declare_parameter("auto_exposure", 3);
+  this->declare_parameter("exposure_time_absolute", 157);
+  this->declare_parameter("exposure_dynamic_framerate", false);  
 
   get_params();
   init();
@@ -223,8 +226,9 @@ void UsbCamNode::get_params()
     {
       "camera_name", "camera_info_url", "frame_id", "framerate", "image_height", "image_width",
       "io_method", "pixel_format", "av_device_format", "video_device", "brightness", "contrast",
-      "saturation", "sharpness", "gain", "auto_white_balance", "white_balance", "autoexposure",
-      "exposure", "autofocus", "focus"
+      "saturation", "hue", "gamma", "gain", "power_line_frequency", "white_balance_temperature", 
+      "white_balance_automatic", "sharpness", "backlight_compensation", "auto_exposure", 
+      "exposure_time_absolute", "exposure_dynamic_framerate"
     }
   );
 
@@ -242,7 +246,7 @@ void UsbCamNode::assign_params(const std::vector<rclcpp::Parameter> & parameters
     } else if (parameter.get_name() == "frame_id") {
       m_parameters.frame_id = parameter.value_to_string();
     } else if (parameter.get_name() == "framerate") {
-      RCLCPP_WARN(this->get_logger(), "framerate: %f", parameter.as_double());
+      RCLCPP_INFO(this->get_logger(), "framerate: %f", parameter.as_double());
       m_parameters.framerate = parameter.as_double();
     } else if (parameter.get_name() == "image_height") {
       m_parameters.image_height = parameter.as_int();
@@ -262,22 +266,28 @@ void UsbCamNode::assign_params(const std::vector<rclcpp::Parameter> & parameters
       m_parameters.contrast = parameter.as_int();
     } else if (parameter.get_name() == "saturation") {
       m_parameters.saturation = parameter.as_int();
-    } else if (parameter.get_name() == "sharpness") {
-      m_parameters.sharpness = parameter.as_int();
+    } else if (parameter.get_name() == "hue") {
+      m_parameters.hue = parameter.as_int();
+    } else if (parameter.get_name() == "gamma") {
+      m_parameters.gamma = parameter.as_int();
     } else if (parameter.get_name() == "gain") {
       m_parameters.gain = parameter.as_int();
-    } else if (parameter.get_name() == "auto_white_balance") {
-      m_parameters.auto_white_balance = parameter.as_bool();
-    } else if (parameter.get_name() == "white_balance") {
-      m_parameters.white_balance = parameter.as_int();
-    } else if (parameter.get_name() == "autoexposure") {
-      m_parameters.autoexposure = parameter.as_bool();
-    } else if (parameter.get_name() == "exposure") {
-      m_parameters.exposure = parameter.as_int();
-    } else if (parameter.get_name() == "autofocus") {
-      m_parameters.autofocus = parameter.as_bool();
-    } else if (parameter.get_name() == "focus") {
-      m_parameters.focus = parameter.as_int();
+    } else if (parameter.get_name() == "power_line_frequency") {
+      m_parameters.power_line_frequency = parameter.as_int();
+    } else if (parameter.get_name() == "white_balance_automatic") {
+      m_parameters.white_balance_automatic = parameter.as_bool();
+    } else if (parameter.get_name() == "white_balance_temperature") {
+      m_parameters.white_balance_temperature = parameter.as_int();
+    } else if (parameter.get_name() == "sharpness") {
+      m_parameters.sharpness = parameter.as_int();
+    } else if (parameter.get_name() == "backlight_compensation") {
+      m_parameters.backlight_compensation = parameter.as_int();
+    } else if (parameter.get_name() == "auto_exposure") {
+      m_parameters.auto_exposure = parameter.as_int();
+    } else if (parameter.get_name() == "exposure_time_absolute") {
+      m_parameters.exposure_time_absolute = parameter.as_int();
+    } else if (parameter.get_name() == "exposure_dynamic_framerate") {
+      m_parameters.exposure_dynamic_framerate = parameter.as_bool();
     } else {
       RCLCPP_WARN(this->get_logger(), "Invalid parameter name: %s", parameter.get_name().c_str());
     }
@@ -285,71 +295,97 @@ void UsbCamNode::assign_params(const std::vector<rclcpp::Parameter> & parameters
 }
 
 /// @brief Send current parameters to V4L2 device
-/// TODO(flynneva): should this actuaully be part of UsbCam class?
 void UsbCamNode::set_v4l2_params()
 {
   // set camera parameters
-  if (m_parameters.brightness >= 0) {
+  if (m_parameters.brightness >= -64 || m_parameters.brightness <= 64) {
     RCLCPP_INFO(this->get_logger(), "Setting 'brightness' to %d", m_parameters.brightness);
     m_camera->set_v4l_parameter("brightness", m_parameters.brightness);
   }
 
-  if (m_parameters.contrast >= 0) {
+  if (m_parameters.contrast >= 0 || m_parameters.contrast <= 64) {
     RCLCPP_INFO(this->get_logger(), "Setting 'contrast' to %d", m_parameters.contrast);
     m_camera->set_v4l_parameter("contrast", m_parameters.contrast);
   }
 
-  if (m_parameters.saturation >= 0) {
+  if (m_parameters.saturation >= 0 || m_parameters.saturation <= 128) {
     RCLCPP_INFO(this->get_logger(), "Setting 'saturation' to %d", m_parameters.saturation);
     m_camera->set_v4l_parameter("saturation", m_parameters.saturation);
   }
 
-  if (m_parameters.sharpness >= 0) {
-    RCLCPP_INFO(this->get_logger(), "Setting 'sharpness' to %d", m_parameters.sharpness);
-    m_camera->set_v4l_parameter("sharpness", m_parameters.sharpness);
+  if (m_parameters.hue >= -40 || m_parameters.hue <= 40) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'hue' to %d", m_parameters.hue);
+    m_camera->set_v4l_parameter("hue", m_parameters.hue);
   }
 
-  if (m_parameters.gain >= 0) {
+  if (m_parameters.gain >= 0 || m_parameters.gain <= 100) {
     RCLCPP_INFO(this->get_logger(), "Setting 'gain' to %d", m_parameters.gain);
     m_camera->set_v4l_parameter("gain", m_parameters.gain);
   }
 
-  // check auto white balance
-  if (m_parameters.auto_white_balance) {
-    // m_camera->set_v4l_parameter("white_balance_temperature_auto", 1);
-    // RCLCPP_INFO(this->get_logger(), "Setting 'white_balance_temperature_auto' to %d", 1);
-  } else {
-    RCLCPP_INFO(this->get_logger(), "Setting 'white_balance' to %d", m_parameters.white_balance);
-    // m_camera->set_v4l_parameter("white_balance_temperature_auto", 0);
-    m_camera->set_v4l_parameter("white_balance_temperature", m_parameters.white_balance);
+  if (m_parameters.gamma >= 72 || m_parameters.gamma <= 500) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'gamma' to %d", m_parameters.gamma);
+    m_camera->set_v4l_parameter("gamma", m_parameters.gamma);
   }
 
-  // check auto exposure
-  if (!m_parameters.autoexposure) {
-    RCLCPP_INFO(this->get_logger(), "Setting 'auto_exposure' to %d", 1);
-    RCLCPP_INFO(this->get_logger(), "Setting 'exposure' to %d", m_parameters.exposure);
-    // turn down exposure control (from max of 3)
+  if (m_parameters.power_line_frequency == 0) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'power_line_frequency' to disabled");
+    m_camera->set_v4l_parameter("power_line_frequency", 0);
+  } else if (m_parameters.power_line_frequency == 1) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'power_line_frequency' to %d Hz", 50);
+    m_camera->set_v4l_parameter("power_line_frequency", 1);
+  } else if (m_parameters.power_line_frequency == 2) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'power_line_frequency' to %d Hz", 60);
+    m_camera->set_v4l_parameter("power_line_frequency", 2);
+  } else {
+    RCLCPP_WARN(this->get_logger(), "Settings for 'power_line_frequency' are wrong. No option for %d", 
+    m_parameters.power_line_frequency);
+  }
+
+  if (m_parameters.white_balance_automatic) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'white_balance_automatic' to true");
+    m_camera->set_v4l_parameter("white_balance_automatic", 1);
+  } else {
+    RCLCPP_INFO(this->get_logger(), "Setting 'white_balance_automatic' to false");
+    m_camera->set_v4l_parameter("white_balance_automatic", 0);
+    RCLCPP_INFO(this->get_logger(), "Setting 'white_balance_temperature' to %d", m_parameters.white_balance_temperature);
+    m_camera->set_v4l_parameter("white_balance_temperature", m_parameters.white_balance_temperature);
+  }
+
+  if (m_parameters.backlight_compensation >= 0 || m_parameters.backlight_compensation <= 20) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'backlight_compensation' to %d", m_parameters.backlight_compensation);
+    m_camera->set_v4l_parameter("backlight_compensation", m_parameters.backlight_compensation);
+  }
+
+  if (m_parameters.sharpness >= 0 || m_parameters.sharpness <= 6) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'sharpness' to %d", m_parameters.sharpness);
+    m_camera->set_v4l_parameter("sharpness", m_parameters.sharpness);
+  }
+
+  if (m_parameters.auto_exposure == 1) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'auto_exposure' to Manual Mode");
     m_camera->set_v4l_parameter("auto_exposure", 1);
-    // change the exposure level
-    m_camera->set_v4l_parameter("exposure_absolute", m_parameters.exposure);
-  } else {
-    RCLCPP_INFO(this->get_logger(), "Setting 'auto_exposure' to %d", 3);
+  } else if (m_parameters.auto_exposure == 3 ) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'auto_exposure' to Aperture Priority Mode");
     m_camera->set_v4l_parameter("auto_exposure", 3);
+  } else {
+    RCLCPP_WARN(this->get_logger(), "Settings for 'auto_exposure' are wrong. No option for %d", 
+    m_parameters.auto_exposure);
   }
 
-  // // check auto focus
-  // if (m_parameters.autofocus) {
-  //   m_camera->set_auto_focus(1);
-  //   RCLCPP_INFO(this->get_logger(), "Setting 'focus_auto' to %d", 1);
-  //   m_camera->set_v4l_parameter("focus_auto", 1);
-  // } else {
-  //   RCLCPP_INFO(this->get_logger(), "Setting 'focus_auto' to %d", 0);
-  //   m_camera->set_v4l_parameter("focus_auto", 0);
-  //   if (m_parameters.focus >= 0) {
-  //     RCLCPP_INFO(this->get_logger(), "Setting 'focus_absolute' to %d", m_parameters.focus);
-  //     m_camera->set_v4l_parameter("focus_absolute", m_parameters.focus);
-  //   }
-  // }
+  if (m_parameters.exposure_time_absolute >= 1 || m_parameters.exposure_time_absolute <= 5000 ) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'exposure_time_absolute' to %d", m_parameters.exposure_time_absolute);
+    m_camera->set_v4l_parameter("exposure_time_absolute", m_parameters.exposure_time_absolute);
+  }
+
+  if (m_parameters.exposure_dynamic_framerate) {
+    RCLCPP_INFO(this->get_logger(), "Setting 'exposure_dynamic_framerate' to true");
+    m_camera->set_v4l_parameter("exposure_dynamic_framerate", 1);
+  } else {
+    RCLCPP_INFO(this->get_logger(), "Setting 'exposure_dynamic_framerate' to false");
+    m_camera->set_v4l_parameter("exposure_dynamic_framerate", 0);
+  }
+
 }
 
 bool UsbCamNode::take_and_send_image()

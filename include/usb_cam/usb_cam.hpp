@@ -122,14 +122,17 @@ typedef struct
   int brightness;
   int contrast;
   int saturation;
-  int sharpness;
+  int hue;
+  int gamma;
   int gain;
-  int white_balance;
-  int exposure;
-  int focus;
-  bool auto_white_balance;
-  bool autoexposure;
-  bool autofocus;
+  int power_line_frequency;
+  bool white_balance_automatic;
+  int white_balance_temperature;
+  int sharpness;
+  int backlight_compensation;
+  int auto_exposure;
+  int exposure_time_absolute;
+  bool exposure_dynamic_framerate;
 } parameters_t;
 
 typedef struct
