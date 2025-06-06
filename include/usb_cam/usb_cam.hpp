@@ -96,24 +96,19 @@ std::vector<std::shared_ptr<pixel_format_base>> driver_supported_formats(
   return fmts;
 }
 
-typedef struct
+typedef struct capture_format_t
 {
   struct v4l2_fmtdesc format;
   struct v4l2_frmivalenum v4l2_fmt;
 } capture_format_t;
 
-typedef struct
+typedef struct parameters_t
 {
-  std::string camera_name;  // can be anything
-  std::string device_name;  // usually /dev/video0 or something similiar
+  std::string camera_name;
+  std::string device_name;
   std::string frame_id;
   std::string io_method_name;
   std::string camera_info_url;
-  // these parameters all have to be a combination supported by the device
-  // Use
-  // v4l2-ctl --device=0 --list-formats-ext
-  // to discover them,
-  // or guvcview
   std::string pixel_format_name;
   std::string av_device_format;
   int image_width;
@@ -135,7 +130,7 @@ typedef struct
   bool exposure_dynamic_framerate;
 } parameters_t;
 
-typedef struct
+typedef struct image_t
 {
   char * data;
   size_t width;
@@ -404,13 +399,10 @@ private:
   image_t m_image;
 
   AVFrame * m_avframe;
-  int m_avframe_size;
   AVCodec * m_avcodec;
-  AVCodecID m_codec_id;
   AVDictionary * m_avoptions;
   AVCodecContext * m_avcodec_context;
 
-  int64_t m_buffer_time_us;
   bool m_is_capturing;
   int m_framerate;
   const time_t m_epoch_time_shift_us;
