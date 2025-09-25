@@ -372,17 +372,18 @@ void UsbCamNode::set_v4l2_params()
   if (m_parameters.auto_exposure == 1) {
     RCLCPP_INFO(this->get_logger(), "Setting 'auto_exposure' to Manual Mode");
     m_camera->set_v4l_parameter("auto_exposure", 1);
+
+    if (m_parameters.exposure_time_absolute >= 1 || m_parameters.exposure_time_absolute <= 5000 ) {
+      RCLCPP_INFO(this->get_logger(), "Setting 'exposure_time_absolute' to %d", m_parameters.exposure_time_absolute);
+      m_camera->set_v4l_parameter("exposure_time_absolute", m_parameters.exposure_time_absolute);
+    }
+
   } else if (m_parameters.auto_exposure == 3 ) {
     RCLCPP_INFO(this->get_logger(), "Setting 'auto_exposure' to Aperture Priority Mode");
     m_camera->set_v4l_parameter("auto_exposure", 3);
   } else {
     RCLCPP_WARN(this->get_logger(), "Settings for 'auto_exposure' are wrong. No option for %d", 
     m_parameters.auto_exposure);
-  }
-
-  if (m_parameters.exposure_time_absolute >= 1 || m_parameters.exposure_time_absolute <= 5000 ) {
-    RCLCPP_INFO(this->get_logger(), "Setting 'exposure_time_absolute' to %d", m_parameters.exposure_time_absolute);
-    m_camera->set_v4l_parameter("exposure_time_absolute", m_parameters.exposure_time_absolute);
   }
 
   if (m_parameters.exposure_dynamic_framerate) {
