@@ -54,6 +54,7 @@ extern "C" {
 #include "usb_cam/formats/yuyv.hpp"
 #include "usb_cam/formats/m420.hpp"
 #include "usb_cam/formats/h264.hpp"
+#include "usb_cam/formats/h264_raw.hpp"
 
 
 namespace usb_cam
@@ -75,6 +76,7 @@ using usb_cam::formats::Y102MONO8;
 using usb_cam::formats::RAW_MJPEG;
 using usb_cam::formats::MJPEG2RGB;
 using usb_cam::formats::H2642RGB;
+using usb_cam::formats::H264;
 using usb_cam::formats::M4202RGB;
 
 
@@ -94,6 +96,7 @@ std::vector<std::shared_ptr<pixel_format_base>> driver_supported_formats(
     std::make_shared<RAW_MJPEG>(args),
     std::make_shared<MJPEG2RGB>(args),
     std::make_shared<H2642RGB>(args),
+    std::make_shared<H264>(args),
     std::make_shared<M4202RGB>(args),
   };
   return fmts;
