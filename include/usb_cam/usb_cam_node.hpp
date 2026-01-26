@@ -40,6 +40,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "sensor_msgs/msg/compressed_image.hpp"
+#include "foxglove_msgs/msg/compressed_video.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 
 #include "usb_cam/usb_cam.hpp"
@@ -68,6 +69,7 @@ public:
   void update();
   bool take_and_send_image();
   bool take_and_send_image_mjpeg();
+  bool take_and_send_image_h264();
 
   rcl_interfaces::msg::SetParametersResult parameters_callback(
     const std::vector<rclcpp::Parameter> & parameters);
@@ -81,9 +83,11 @@ public:
 
   sensor_msgs::msg::Image::UniquePtr m_image_msg;
   sensor_msgs::msg::CompressedImage::UniquePtr m_compressed_img_msg;
+  foxglove_msgs::msg::CompressedVideo::UniquePtr m_compressed_video_msg;
   std::shared_ptr<image_transport::CameraPublisher> m_image_publisher;
   rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr m_compressed_image_publisher;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr m_compressed_cam_info_publisher;
+  rclcpp::Publisher<foxglove_msgs::msg::CompressedVideo>::SharedPtr m_compressed_video_publisher;
 
   parameters_t m_parameters;
 

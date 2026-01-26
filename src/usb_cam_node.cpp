@@ -44,11 +44,13 @@ UsbCamNode::UsbCamNode(const rclcpp::NodeOptions & node_options)
   m_camera(new usb_cam::UsbCam()),
   m_image_msg(new sensor_msgs::msg::Image()),
   m_compressed_img_msg(nullptr),
+  m_compressed_video_msg(nullptr),
   m_image_publisher(std::make_shared<image_transport::CameraPublisher>(
       image_transport::create_camera_publisher(this, BASE_TOPIC_NAME,
       rclcpp::QoS {100}.get_rmw_qos_profile()))),
   m_compressed_image_publisher(nullptr),
   m_compressed_cam_info_publisher(nullptr),
+  m_compressed_video_publisher(nullptr),
   m_parameters(),
   m_camera_info_msg(new sensor_msgs::msg::CameraInfo()),
   m_service_capture(
@@ -190,6 +192,20 @@ void UsbCamNode::init()
     m_compressed_cam_info_publisher =
       this->create_publisher<sensor_msgs::msg::CameraInfo>(
       "camera_info", rclcpp::QoS(100));
+  }
+
+  // if pixel format is h264, use foxglove CompressedVideo for efficient streaming
+  if (m_parameters.pixel_format_name == "h264") {
+    m_compressed_video_msg.reset(new foxglove_msgs::msg::CompressedVideo());
+    m_compressed_video_msg->frame_id = m_parameters.frame_id;
+    m_compressed_video_msg->format = "h264";
+    m_compressed_video_publisher =
+      this->create_publisher<foxglove_msgs::msg::CompressedVideo>(
+      "compressed_video", rclcpp::QoS(100));
+    m_compressed_cam_info_publisher =
+      this->create_publisher<sensor_msgs::msg::CameraInfo>(
+      "camera_info", rclcpp::QoS(100));
+    RCLCPP_INFO(this->get_logger(), "Publishing H.264 stream as foxglove CompressedVideo");
   }
 
   m_image_msg->header.frame_id = m_parameters.frame_id;
@@ -448,6 +464,36 @@ bool UsbCamNode::take_and_send_image_mjpeg()
   return true;
 }
 
+bool UsbCamNode::take_and_send_image_h264()
+{
+  // Get the raw H.264 frame size from camera
+  auto frame_size = m_camera->get_image_size_in_bytes();
+  
+  // Only resize if required
+  if (m_compressed_video_msg->data.size() != frame_size) {
+    m_compressed_video_msg->data.resize(frame_size);
+  }
+
+  // Grab the raw H.264 frame directly without decoding
+  m_camera->get_image(reinterpret_cast<char *>(&m_compressed_video_msg->data[0]));
+
+  // Set timestamp from camera
+  auto stamp = m_camera->get_image_timestamp();
+  m_compressed_video_msg->timestamp.sec = stamp.tv_sec;
+  m_compressed_video_msg->timestamp.nanosec = stamp.tv_nsec;
+
+  // Publish camera info
+  *m_camera_info_msg = m_camera_info->getCameraInfo();
+  m_camera_info_msg->header.stamp.sec = stamp.tv_sec;
+  m_camera_info_msg->header.stamp.nanosec = stamp.tv_nsec;
+  m_camera_info_msg->header.frame_id = m_parameters.frame_id;
+
+  // Publish the compressed video message and camera info
+  m_compressed_video_publisher->publish(*m_compressed_video_msg);
+  m_compressed_cam_info_publisher->publish(*m_camera_info_msg);
+  return true;
+}
+
 rcl_interfaces::msg::SetParametersResult UsbCamNode::parameters_callback(
   const std::vector<rclcpp::Parameter> & parameters)
 {
@@ -467,9 +513,14 @@ void UsbCamNode::update()
     // If the camera exposure longer higher than the framerate period
     // then that caps the framerate.
     // auto t0 = now();
-    bool isSuccessful = (m_parameters.pixel_format_name == "mjpeg") ?
-      take_and_send_image_mjpeg() :
-      take_and_send_image();
+    bool isSuccessful = false;
+    if (m_parameters.pixel_format_name == "mjpeg") {
+      isSuccessful = take_and_send_image_mjpeg();
+    } else if (m_parameters.pixel_format_name == "h264") {
+      isSuccessful = take_and_send_image_h264();
+    } else {
+      isSuccessful = take_and_send_image();
+    }
     if (!isSuccessful) {
       RCLCPP_WARN_ONCE(this->get_logger(), "USB camera did not respond in time.");
     }
